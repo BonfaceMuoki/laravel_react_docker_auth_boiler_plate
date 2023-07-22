@@ -1,0 +1,86 @@
+version: "3.9"
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: elevateapinginx
+    restart: unless-stopped
+    ports:
+      - 8002:80
+    volumes:
+      - ./:/var/www/html:cached
+      - ./.docker/nginx:/etc/nginx/conf.d
+    networks:
+      - elevateapi-network
+    depends_on:
+      - app
+  ngrok:
+    image: wernight/ngrok:latest
+    ports:
+      - 4041:4040
+    environment:
+      NGROK_PROTOCOL: http
+      NGROK_PORT: nginx:80
+      NGROK_AUTH: ${NGROK_AUTH}
+    depends_on:
+      - nginx
+    networks:
+      - elevateapi-network  
+  app:
+    build:
+      args:
+        user: d_user
+        uid: 1000
+      context: ./.docker/app
+      dockerfile: Dockerfile
+    image: elevateapi
+    container_name: elevateapi
+    restart: unless-stopped
+    ports: 
+        - 6002:6001
+    working_dir: /var/www/html
+    volumes:
+      - ./:/var/www/html:cached
+      - ./.docker/app/php-fpm.ini:/usr/local/etc/php/conf.d/99-app.ini
+    networks:
+      - elevateapi-network
+    depends_on:
+      - database
+
+  database:
+    image: mysql
+    container_name: valtrackapi-mysql
+    command: --default-authentication-plugin=mysql_native_password
+    restart: unless-stopped
+    ports:
+      - 3307:3304
+    volumes:
+      - elevateapi-volume:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD}
+      - MYSQL_USER=${DB_USERNAME}
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+      - MYSQL_DATABASE=${DB_DATABASE}
+    networks:
+      - elevateapi-network
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: elevateapi-phpmyadmin
+    restart: unless-stopped
+    tty: true
+    depends_on:
+      - database
+    ports:
+      - 8092:80
+    environment:
+      PMA_HOST: database
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      UPLOAD_LIMIT: 300M
+    networks:
+      - elevateapi-network
+networks:
+  elevateapi-network:
+    driver: bridge
+
+volumes:
+  elevateapi-volume:
+    driver: local
